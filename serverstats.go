@@ -58,10 +58,10 @@ func memStats(cs chan Metric) {
 	cs <- Metric{Time: now, Name: "swap.free", Value: toMegabytesString(swap.Free), Unit: "M"}
 }
 
-func cpuStatsLoop(ch chan Metric) {
+func cpuStatsLoop(ch chan Metric, periode time.Duration) {
 
 	concreteSigar := sigar.ConcreteSigar{}
-	cpuCh, _ := concreteSigar.CollectCpuStats(CPU_PERIODE)
+	cpuCh, _ := concreteSigar.CollectCpuStats(periode)
 	for cpuStat := range cpuCh {
 		now := time.Now()
 		total := float64(cpuStat.Total())
@@ -80,16 +80,28 @@ func cpuStatsLoop(ch chan Metric) {
 	}
 }
 
+type ServerStatsPeriodes struct {
+	Mem     time.Duration
+	LoadAvg time.Duration
+	Cpu     time.Duration
+}
+
+var DefaultPeriodes = &ServerStatsPeriodes{
+	Mem:     1 * time.Second,
+	LoadAvg: 1 * time.Second,
+	Cpu:     1 * time.Second,
+}
+
 type ServerStats struct {
 	Metrics chan Metric
 }
 
-func NewServerStats() *ServerStats {
+func NewServerStats(periodes *ServerStatsPeriodes) *ServerStats {
 	serverStats := ServerStats{
 		Metrics: make(chan Metric),
 	}
-	scheduledtask.NewScheduledTask(func() { memStats(serverStats.Metrics) }, MEMSTATS_PERIODE, 0)
-	scheduledtask.NewScheduledTask(func() { loadavg(serverStats.Metrics) }, LOADAVG_AND_UPTIME_PERIODE, 0)
-	go cpuStatsLoop(serverStats.Metrics)
+	scheduledtask.NewScheduledTask(func() { memStats(serverStats.Metrics) }, periodes.Mem, 0)
+	scheduledtask.NewScheduledTask(func() { loadavg(serverStats.Metrics) }, periodes.LoadAvg, 0)
+	go cpuStatsLoop(serverStats.Metrics, periodes.Cpu)
 	return &serverStats
 }
