@@ -1,4 +1,4 @@
-package main
+package serverstats
 
 import (
 	"fmt"
@@ -80,15 +80,16 @@ func cpuStatsLoop(ch chan Metric) {
 	}
 }
 
-func main() {
+type ServerStats struct {
+	Metrics chan Metric
+}
 
-	metrics := make(chan Metric)
-	scheduledtask.NewScheduledTask(func() { memStats(metrics) }, MEMSTATS_PERIODE, 0)
-	scheduledtask.NewScheduledTask(func() { loadavg(metrics) }, LOADAVG_AND_UPTIME_PERIODE, 0)
-	go cpuStatsLoop(metrics)
-
-	for metric := range metrics {
-		fmt.Println(fmt.Sprintf("%-15s", metric.Name), metric.Value, metric.Unit)
+func NewServerStats() *ServerStats {
+	serverStats := ServerStats{
+		Metrics: make(chan Metric),
 	}
-
+	scheduledtask.NewScheduledTask(func() { memStats(serverStats.Metrics) }, MEMSTATS_PERIODE, 0)
+	scheduledtask.NewScheduledTask(func() { loadavg(serverStats.Metrics) }, LOADAVG_AND_UPTIME_PERIODE, 0)
+	go cpuStatsLoop(serverStats.Metrics)
+	return &serverStats
 }
