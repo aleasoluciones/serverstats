@@ -53,6 +53,11 @@ func memStats(cs chan Metric, hostname string) {
 	cs <- createMetric(now, hostname, "swap.total", toMegabytesString(swap.Total), "M")
 	cs <- createMetric(now, hostname, "swap.used", toMegabytesString(swap.Used), "M")
 	cs <- createMetric(now, hostname, "swap.free", toMegabytesString(swap.Free), "M")
+
+	memActualUsedPercent := (float64(mem.ActualUsed) / float64(mem.Total)) * 100
+	swapUsedPercent := (float64(swap.Used) / float64(swap.Total)) * 100
+	cs <- createMetric(now, hostname, "mem.actualusedpercent", fmt.Sprintf("%.2f", memActualUsedPercent), "%")
+	cs <- createMetric(now, hostname, "swap.usedpercent", fmt.Sprintf("%.2f", swapUsedPercent), "%")
 }
 
 func toMegabytesString(bytes uint64) string {
