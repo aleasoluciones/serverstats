@@ -2,6 +2,7 @@ package serverstats
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/aleasoluciones/goaleasoluciones/scheduledtask"
@@ -21,7 +22,7 @@ type Metric struct {
 	Unit      string `json:"unit,omitempty"`
 }
 
-func loadavg(cs chan Metric) {
+func loadavg(cs chan Metric, hostname string) {
 	now := time.Now().Unix()
 	concreteSigar := sigar.ConcreteSigar{}
 
@@ -31,16 +32,12 @@ func loadavg(cs chan Metric) {
 		return
 	}
 
-	cs <- Metric{Timestamp: now, Name: "loadavg.one", Value: fmt.Sprintf("%.2f", avg.One)}
-	cs <- Metric{Timestamp: now, Name: "loadavg.five", Value: fmt.Sprintf("%.2f", avg.Five)}
-	cs <- Metric{Timestamp: now, Name: "loadavg.Fifteen", Value: fmt.Sprintf("%.2f", avg.Five)}
+	cs <- createMetric(now, hostname, "loadavg.one", fmt.Sprintf("%.2f", avg.One), "")
+	cs <- createMetric(now, hostname, "loadavg.five", fmt.Sprintf("%.2f", avg.Five), "")
+	cs <- createMetric(now, hostname, "loadavg.Fifteen", fmt.Sprintf("%.2f", avg.Five), "")
 }
 
-func toMegabytesString(bytes uint64) string {
-	return fmt.Sprintf("%.2f", (float64(bytes) / 1024 / 1024))
-}
-
-func memStats(cs chan Metric) {
+func memStats(cs chan Metric, hostname string) {
 	now := time.Now().Unix()
 	mem := sigar.Mem{}
 	swap := sigar.Swap{}
@@ -48,18 +45,21 @@ func memStats(cs chan Metric) {
 	mem.Get()
 	swap.Get()
 
-	cs <- Metric{Timestamp: now, Name: "mem.total", Value: toMegabytesString(mem.Total), Unit: "M"}
-	cs <- Metric{Timestamp: now, Name: "mem.used", Value: toMegabytesString(mem.Used), Unit: "M"}
-	cs <- Metric{Timestamp: now, Name: "mem.free", Value: toMegabytesString(mem.Free), Unit: "M"}
-	cs <- Metric{Timestamp: now, Name: "mem.actualused", Value: toMegabytesString(mem.ActualUsed), Unit: "M"}
-	cs <- Metric{Timestamp: now, Name: "mem.actualfree", Value: toMegabytesString(mem.ActualFree), Unit: "M"}
-	cs <- Metric{Timestamp: now, Name: "swap.total", Value: toMegabytesString(swap.Total), Unit: "M"}
-	cs <- Metric{Timestamp: now, Name: "swap.used", Value: toMegabytesString(swap.Used), Unit: "M"}
-	cs <- Metric{Timestamp: now, Name: "swap.free", Value: toMegabytesString(swap.Free), Unit: "M"}
+	cs <- createMetric(now, hostname, "mem.total", toMegabytesString(mem.Total), "M")
+	cs <- createMetric(now, hostname, "mem.used", toMegabytesString(mem.Used), "M")
+	cs <- createMetric(now, hostname, "mem.free", toMegabytesString(mem.Free), "M")
+	cs <- createMetric(now, hostname, "mem.actualused", toMegabytesString(mem.ActualUsed), "M")
+	cs <- createMetric(now, hostname, "mem.actualfree", toMegabytesString(mem.ActualFree), "M")
+	cs <- createMetric(now, hostname, "swap.total", toMegabytesString(swap.Total), "M")
+	cs <- createMetric(now, hostname, "swap.used", toMegabytesString(swap.Used), "M")
+	cs <- createMetric(now, hostname, "swap.free", toMegabytesString(swap.Free), "M")
 }
 
-func cpuStatsLoop(ch chan Metric, periode time.Duration) {
+func toMegabytesString(bytes uint64) string {
+	return fmt.Sprintf("%.2f", (float64(bytes) / 1024 / 1024))
+}
 
+func cpuStatsLoop(ch chan Metric, hostname string, periode time.Duration) {
 	concreteSigar := sigar.ConcreteSigar{}
 	cpuCh, _ := concreteSigar.CollectCpuStats(periode)
 	for cpuStat := range cpuCh {
@@ -72,11 +72,20 @@ func cpuStatsLoop(ch chan Metric, periode time.Duration) {
 		wait := (float64(cpuStat.Wait) / total) * 100
 		stolen := (float64(cpuStat.Stolen) / total) * 100
 
-		ch <- Metric{Timestamp: now, Name: "cpu.user", Value: fmt.Sprintf("%.2f", user), Unit: "%"}
-		ch <- Metric{Timestamp: now, Name: "cpu.sys", Value: fmt.Sprintf("%.2f", sys), Unit: "%"}
-		ch <- Metric{Timestamp: now, Name: "cpu.idle", Value: fmt.Sprintf("%.2f", idle), Unit: "%"}
-		ch <- Metric{Timestamp: now, Name: "cpu.wait", Value: fmt.Sprintf("%.2f", wait), Unit: "%"}
-		ch <- Metric{Timestamp: now, Name: "cpu.stolen", Value: fmt.Sprintf("%.2f", stolen), Unit: "%"}
+		ch <- createMetric(now, hostname, "cpu.user", fmt.Sprintf("%.2f", user), "%")
+		ch <- createMetric(now, hostname, "cpu.sys", fmt.Sprintf("%.2f", sys), "%")
+		ch <- createMetric(now, hostname, "cpu.idle", fmt.Sprintf("%.2f", idle), "%")
+		ch <- createMetric(now, hostname, "cpu.wait", fmt.Sprintf("%.2f", wait), "%")
+		ch <- createMetric(now, hostname, "cpu.stolen", fmt.Sprintf("%.2f", stolen), "%")
+	}
+}
+
+func createMetric(timestamp int64, hostname, name, value string, unit string) Metric {
+	return Metric{
+		Timestamp: timestamp,
+		Name:      hostname + "." + name,
+		Value:     value,
+		Unit:      unit,
 	}
 }
 
@@ -100,8 +109,9 @@ func NewServerStats(periodes *ServerStatsPeriodes) *ServerStats {
 	serverStats := ServerStats{
 		Metrics: make(chan Metric),
 	}
-	scheduledtask.NewScheduledTask(func() { memStats(serverStats.Metrics) }, periodes.Mem, 0)
-	scheduledtask.NewScheduledTask(func() { loadavg(serverStats.Metrics) }, periodes.LoadAvg, 0)
-	go cpuStatsLoop(serverStats.Metrics, periodes.Cpu)
+	hostname, _ := os.Hostname()
+	scheduledtask.NewScheduledTask(func() { memStats(serverStats.Metrics, hostname) }, periodes.Mem, 0)
+	scheduledtask.NewScheduledTask(func() { loadavg(serverStats.Metrics, hostname) }, periodes.LoadAvg, 0)
+	go cpuStatsLoop(serverStats.Metrics, hostname, periodes.Cpu)
 	return &serverStats
 }
