@@ -9,7 +9,7 @@ func main() {
 	serverStats := serverstats.NewServerStats(serverstats.DefaultPeriodes)
 
 	for metric := range serverStats.Metrics {
-		fmt.Println(fmt.Sprintf("%-15s", metric.Name), metric.Value, metric.Unit)
+		fmt.Println(metric.Timestamp, fmt.Sprintf("%-15s", metric.Name), metric.Value, metric.Unit)
 	}
 
 }
